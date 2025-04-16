@@ -184,5 +184,5 @@ class SpotPerCellAnalyzer:
             lower95ths[i] = column[lower95thIndex]
             upper95ths[i] = column[upper95thIndex]
             maxEnvs[i] = column[nrOfSamples-1]
-        return minEnvs, lower95ths, maxEnvs, upper95ths
+        return minEnvs, lower95ths, upper95ths, maxEnvs
 
