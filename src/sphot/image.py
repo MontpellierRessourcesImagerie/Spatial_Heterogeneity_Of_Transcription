@@ -236,7 +236,7 @@ class SpotPerCellAnalyzer:
 
 
     def getEnvelopForEmptySpaceDistances(self, label, nrOfSamples=100):
-        maxDist = np.max(self.allDistances[label][0])
+        maxDist = np.max(self.emptySpaceDistances[label][0])
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
         xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale)))
