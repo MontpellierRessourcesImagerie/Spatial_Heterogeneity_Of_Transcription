@@ -49,7 +49,6 @@ class Segmentation:
         yield
 
 
-
     def runCellpose(self):
         from cellpose import models
         CP = models.CellposeModel(pretrained_model=self.modelType, gpu=True)
@@ -109,6 +108,29 @@ class SpotPerCellAnalyzer:
         self.nrOfEmptySpacePoints = 1000
         self.emptySpacePointsPerCell = {}
         self.emptySpaceDistances = {}
+
+
+    def getNNMeasurements(self):
+        self.calculateNNDistances()
+        table = {'label': [],
+                 'min-nn-dist': [],
+                 'mean-nn-dist': [],
+                 'std-dev-nn-dist': [],
+                 'median-nn-dist': [],
+                 'max-nn-dist': []}
+        for label in range(1, self.maxLabel+1):
+            table['label'].append(label)
+            table['min-nn-dist'].append(np.min(self.nnDistances[label][0]))
+            table['mean-nn-dist'].append(np.mean(self.nnDistances[label][0]))
+            table['std-dev-nn-dist'].append(np.std(self.nnDistances[label][0]))
+            table['median-nn-dist'].append(np.median(self.nnDistances[label][0]))
+            table['max-nn-dist'].append(np.max(self.nnDistances[label][0]))
+        return table
+
+
+    def calculateNNDistances(self):
+        self._calculateSpotsPerCell()
+        self.nnDistances = self.getNNDistances()
 
 
     def calculateGFunction(self):
