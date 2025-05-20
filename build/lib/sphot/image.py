@@ -4,11 +4,8 @@ import numpy as np
 from skimage.segmentation import clear_border
 from skimage.morphology import remove_small_objects
 from skimage.segmentation import relabel_sequential
-from skimage.measure import regionprops_table
 from bigfish import detection
 from scipy.spatial import KDTree
-from scipy.spatial import ConvexHull
-from scipy.spatial import Delaunay
 from scipy.stats import ecdf
 from scipy.spatial.distance import cdist
 
@@ -50,6 +47,7 @@ class Segmentation:
         if self.clearBorder or self.minSize>0:
             self.labels, _, _ = relabel_sequential(self.labels)
         yield
+
 
 
     def runCellpose(self):
@@ -113,110 +111,6 @@ class SpotPerCellAnalyzer:
         self.emptySpaceDistances = {}
 
 
-    def getBaseMeasurements(self):
-        self._calculateSpotsPerCell()
-        props = regionprops_table(self.labels, properties=('label', 'area'),
-                                  spacing=(self.scale, self.scale, self.scale))
-        table = {'label': [], 'nucleus_volume': [], 'spots': []}
-        for label in range(1, self.maxLabel + 1):
-            index = np.where(props['label']==label)[0][0]
-            volume = props['area'][index]
-            nrOfSpots = len(self.pointsPerCell[label])
-            table['label'].append(label)
-            table['nucleus_volume'].append(volume)
-            table['spots'].append(nrOfSpots)
-        return table
-
-
-    def getNNMeasurements(self):
-        self.calculateNNDistances()
-        table = {'label': [],
-                 'min_nn_dist': [],
-                 'mean_nn_dist': [],
-                 'std_dev_nn_dist': [],
-                 'median_nn_dist': [],
-                 'max_nn_dist': []}
-        for label in range(1, self.maxLabel+1):
-            table['label'].append(label)
-            table['min_nn_dist'].append(np.min(self.nnDistances[label][0]))
-            table['mean_nn_dist'].append(np.mean(self.nnDistances[label][0]))
-            table['std_dev_nn_dist'].append(np.std(self.nnDistances[label][0]))
-            table['median_nn_dist'].append(np.median(self.nnDistances[label][0]))
-            table['max_nn_dist'].append(np.max(self.nnDistances[label][0]))
-        return table
-
-
-    def getConvexHull(self, label):
-        self._calculateSpotsPerCell()
-        hull = ConvexHull(self.pointsPerCell[label])
-        return hull
-
-
-    def getDelaunay(self, label):
-        self._calculateSpotsPerCell()
-        tess = Delaunay(self.pointsPerCell[label])
-        return tess
-
-
-    def getConvexHullMeasurements(self):
-        self._calculateSpotsPerCell()
-        table = {'label': [],
-                 'hull_volume': [],
-                 'hull_area': [],
-                 'hull_vertices': [],
-                 'hull_simplices': [],
-                 'bb_depth': [],
-                 'bb_height': [],
-                 'bb_width': []
-                 }
-        for label in range(1, self.maxLabel + 1):
-            hull = self.getConvexHull(label)
-            table['label'].append(label)
-            table['hull_volume'].append(hull.volume * self.scale * self.scale * self.scale)
-            table['hull_area'].append(hull.area * self.scale * self.scale)
-            table['hull_vertices'].append(len(hull.vertices))
-            table['hull_simplices'].append(len(hull.simplices))
-            bounds = (hull.max_bound - hull.min_bound) * self.scale
-            table['bb_depth'].append(bounds[0])
-            table['bb_height'].append(bounds[1])
-            table['bb_width'].append(bounds[2])
-        return table
-
-
-    @classmethod
-    def tetravol(cls, a, b, c, d):
-        '''Calculates the volume of a tetrahedron, given vertices a,b,c and d (triplets)'''
-        tetravol=abs(np.dot((a-d),np.cross((b-d),(c-d))))/6
-        return tetravol
-
-
-    def getDelaunayMeasurements(self):
-        table = {'label': [],
-                 'min_delaunay_vol': [],
-                 'mean_delaunay_vol': [],
-                 'std_dev_delaunay_vol': [],
-                 'median_delaunay_vol': [],
-                 'max_delaunay_vol': []}
-        for label in range(1, self.maxLabel + 1):
-            tess = self.getDelaunay(label)
-            volumes = []
-            for a, b, c, d in tess.points[tess.simplices]:
-                volumes.append(self.tetravol(a, b, c, d))
-            volumes = np.array(volumes) * self.scale * self.scale * self.scale
-            table['label'].append(label)
-            table['min_delaunay_vol'].append(np.min(volumes))
-            table['mean_delaunay_vol'].append(np.mean(volumes))
-            table['std_dev_delaunay_vol'].append(np.std(volumes))
-            table['median_delaunay_vol'].append(np.median(volumes))
-            table['max_delaunay_vol'].append(np.max(volumes))
-        return table
-
-
-    def calculateNNDistances(self):
-        self._calculateSpotsPerCell()
-        self.nnDistances = self.getNNDistances()
-
-
     def calculateGFunction(self):
         self._calculateSpotsPerCell()
         self.nnDistances = self.getNNDistances()
@@ -236,8 +130,6 @@ class SpotPerCellAnalyzer:
 
 
     def _calculateSpotsPerCell(self):
-        if self.pointsPerCell:
-            return
         maxLabel = int(np.max(self.labels))
         for i in range(0, maxLabel + 1):
             self.pointsPerCell[i] = []
