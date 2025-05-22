@@ -6,7 +6,7 @@ from skimage.morphology import remove_small_objects
 from skimage.segmentation import relabel_sequential
 from skimage.measure import regionprops_table
 from bigfish import detection
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, Voronoi
 from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 from scipy.stats import ecdf
@@ -156,6 +156,28 @@ class SpotPerCellAnalyzer:
         self._calculateSpotsPerCell()
         tess = Delaunay(self.pointsPerCell[label])
         return tess
+
+
+    def getVoronoi(self, label):
+        self._calculateSpotsPerCell()
+        voro = Voronoi(self.pointsPerCell[label])
+        return voro
+
+
+    def getVoronoiRegions(self, label):
+        v = self.getVoronoi(label)
+        regions = []
+        for i, reg_num in enumerate(v.point_region):
+            indices = v.regions[reg_num]
+            if -1 in indices:
+                continue
+            else:
+                hull = ConvexHull(v.vertices[indices])
+                if not regions:
+                    regions = list(hull.points[hull.simplices])
+                else:
+                    regions = regions + list((hull.points[hull.simplices]))
+        return regions
 
 
     def getConvexHullMeasurements(self):
