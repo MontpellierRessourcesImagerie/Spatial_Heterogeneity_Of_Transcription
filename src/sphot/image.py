@@ -227,12 +227,14 @@ class SpotPerCellAnalyzer:
 
     def getEnvelopForNNDistances(self, label, nrOfSamples=100):
         maxDist = np.max(self.nnDistances[label][0])
-        return self.getEnvelopForDistanceFunction(label, self.getNNDistancesFor, maxDist, nrOfSamples)
+        # return self.getEnvelopForDistanceFunction(label, self.getNNDistancesFor, maxDist, nrOfSamples)
+        return self.getEnvelopFromECDFsOrdering(label, self.getNNDistancesFor, maxDist, nrOfSamples)
 
 
     def getEnvelopForAllDistances(self, label, nrOfSamples=100):
         maxDist = np.max(self.allDistances[label][0])
-        return self.getEnvelopForDistanceFunction(label, self.getAllDistancesFor, maxDist, nrOfSamples)
+        # return self.getEnvelopForDistanceFunction(label, self.getAllDistancesFor, maxDist, nrOfSamples)
+        return self.getEnvelopFromECDFsOrdering(label, self.getAllDistancesFor, maxDist, nrOfSamples)
 
 
     def getEnvelopForEmptySpaceDistances(self, label, nrOfSamples=100):
@@ -286,3 +288,40 @@ class SpotPerCellAnalyzer:
             upper95ths[i] = column[upper95thIndex]
             maxEnvs[i] = column[nrOfSamples-1]
         return minEnvs, lower95ths, upper95ths, maxEnvs
+
+
+    def getEnvelopFromECDFsOrdering(self, label, distanceFunction, maxDist, nrOfSamples=100):
+        lower95thIndex = (5 * nrOfSamples) // 100
+        upper95thIndex = (95 * nrOfSamples) // 100
+        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale)))
+        scoredECDFs = []
+        for i in range(nrOfSamples):
+            points = self.getRandomPointsForLabel(label)
+            distances = distanceFunction(points)[0]
+            scoredECDF = ScoredECDF(ecdf(distances), maxDist, self.scale)
+            scoredECDFs.append(scoredECDF)
+        scoredECDFs.sort(key = lambda x: x.score)
+        minEnv = scoredECDFs[0].yValues
+        lower95th = scoredECDFs[lower95thIndex].yValues
+        upper95th = scoredECDFs[upper95thIndex].yValues
+        maxEnv = scoredECDFs[nrOfSamples-1].yValues
+        return minEnv, lower95th, upper95th, maxEnv
+
+
+
+class ScoredECDF:
+
+
+    def __init__(self, cdf, maxDist, scale):
+        self.cdf = cdf
+        self.maxDist = maxDist
+        self.scale = scale
+        self.score = 0
+        self.yValues = []
+        self._calculateScore()
+
+
+    def _calculateScore(self):
+        xValues = np.array(list(range(0, math.floor(self.maxDist + 1), self.scale)))
+        self.yValues = self.cdf.cdf.evaluate(xValues).tolist()
+        self.score = sum(self.yValues)
