@@ -1,10 +1,12 @@
 import math
 import random
 import numpy as np
+from scipy.signal import correlate
 from skimage.segmentation import clear_border
 from skimage.morphology import remove_small_objects
 from skimage.segmentation import relabel_sequential
 from skimage.measure import regionprops_table
+from skimage.measure import regionprops
 from bigfish import detection
 from scipy.spatial import KDTree, Voronoi
 from scipy.spatial import ConvexHull
@@ -438,6 +440,39 @@ class SpotPerCellAnalyzer:
         return minEnv, lower95th, upper95th, maxEnv
 
 
+    @classmethod
+    def getPointImageFor(cls, points):
+        pointsT = np.transpose(points)
+        minZ = np.min(pointsT[0])
+        maxZ = np.max(pointsT[0])
+        minY = np.min(pointsT[1])
+        maxY = np.max(pointsT[1])
+        minX = np.min(pointsT[2])
+        maxX = np.max(pointsT[2])
+        depth = (maxZ - minZ) + 1
+        height = (maxY - minY) + 1
+        width = (maxX - minX) + 1
+        image = np.zeros((depth, height, width), np.uint8)
+        shiftedPoints = [np.array([z-minZ, y-minY, x-minX]) for z, y, x in points]
+        for z, y, x in shiftedPoints:
+            image[z][y][x] = 255
+        return image
+
+
+    def cropImageForLabel(self, image, label):
+        """
+        Crop the image to the bounding box of the given label and set the pixels outside the label
+        to zero.
+        """
+        props = regionprops(self.labels)
+        bbox = props[label-1].bbox
+        result = image[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
+        mask = self.labels[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
+        mask = (mask == label) * 1
+        result = result * mask
+        return result
+
+
 
 class ScoredECDF:
 
@@ -455,3 +490,109 @@ class ScoredECDF:
         xValues = np.array(list(range(0, math.floor(self.maxDist + 1), self.scale)))
         self.yValues = self.cdf.cdf.evaluate(xValues).tolist()
         self.score = sum(self.yValues)
+
+
+
+class Background(object):
+
+
+    def __init__(self):
+        super(Background, self).__init__()
+
+
+    @classmethod
+    def removeMin(cls, image):
+        val = np.clip(np.min(image[image>0]), 0, np.max(image))
+        return image - val
+
+
+
+class Coordinates(object):
+
+
+    def __init__(self, origin):
+        super(Coordinates, self).__init__()
+        self.origin = origin
+
+
+    @staticmethod
+    def cartesianToPolar(y, x):
+        radius = math.sqrt(x * x + y * y)
+        theta = math.atan2(y, x)
+        return radius, theta
+
+
+    @staticmethod
+    def polarToCartesian(radius, theta):
+        y = radius * math.sin(theta)
+        x = radius * math.cos(theta)
+        return y, x
+
+
+    def cartesianToSpherical(self, z, y, x):
+        z = z - (self.origin[0] / 2)
+        y = y - (self.origin[1] / 2)
+        x = x - (self.origin[2] / 2)
+        xy, phi = Coordinates.cartesianToPolar(y, x)
+        radius, theta = Coordinates.cartesianToPolar(z, xy)
+        return radius, theta, phi
+
+
+    def sphericalToCartesian(self, radius, theta, phi):
+        xy, z = Coordinates.polarToCartesian(radius, theta)
+        y, x = Coordinates.polarToCartesian(xy, phi)
+        z = z - (self.origin[0] / 2)
+        y = y - (self.origin[1] / 2)
+        x = x - (self.origin[2] / 2)
+        return z, y, x
+
+
+    @staticmethod
+    def getSphereRanges(maxRadius):
+        radii = np.arange(0, maxRadius, 1).tolist()
+        inclinations = np.arange(-np.pi, np.pi, np.pi/180).tolist()
+        azimuths = np.arange(-np.pi, np.pi, np.pi/180).tolist()
+        return radii, inclinations, azimuths
+
+
+
+class Correlator(object):
+
+
+    def __init__(self, image1, image2=None):
+        super(Correlator, self).__init__()
+        self.image1 = image1
+        self.image2 = image2
+        self.correlationImage = None
+        self.correlationProfile = None
+
+
+    def calculateAutocorrelation(self):
+        image = self.image1
+        self.correlationImage = correlate(image, image)
+
+
+    def calculateAutocorrelationProfile(self):
+        if self.correlationImage is None:
+            self.calculateAutocorrelation()
+        maxRadius = min(self.correlationImage.shape) // 2
+        originZ, originY, originX = (self.correlationImage.shape[0] // 2,
+                                     self.correlationImage.shape[1] // 2,
+                                     self.correlationImage.shape[2] // 2)
+        coords = Coordinates((originZ, originY, originX))
+        radii, inclinations, azimuths = Coordinates.getSphereRanges(maxRadius)
+        meanByRadius = [0] * len(radii)
+        N = len(inclinations) * len(azimuths)
+        for i, radius in enumerate(radii):
+            for inclination in inclinations:
+                for azimuth in azimuths:
+                    z, y, x = coords.sphericalToCartesian(radius, inclination, azimuth)
+                    z ,y, x = round(z) + originZ + radius - 1, round(y) + originY + radius - 1, round(x) + originX + radius - 1
+                    meanByRadius[i] = meanByRadius[i] + self.correlationImage[z, y, x]
+            meanByRadius[i] = meanByRadius[i] / N
+        self.correlationProfile = (radii, meanByRadius)
+
+
+
+
+
