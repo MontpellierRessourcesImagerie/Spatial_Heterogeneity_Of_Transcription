@@ -470,6 +470,7 @@ class SpotPerCellAnalyzer:
         mask = self.labels[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
         mask = (mask == label) * 1
         result = result * mask
+        result = Background.removeMin(result)
         return result
 
 
@@ -502,8 +503,9 @@ class Background(object):
 
     @classmethod
     def removeMin(cls, image):
-        val = np.clip(np.min(image[image>0]), 0, np.max(image))
-        return image - val
+        val = np.min(image[image>0])
+        image = np.clip(image-val, 0, np.max(image))
+        return image
 
 
 
@@ -530,9 +532,9 @@ class Coordinates(object):
 
 
     def cartesianToSpherical(self, z, y, x):
-        z = z - (self.origin[0] / 2)
-        y = y - (self.origin[1] / 2)
-        x = x - (self.origin[2] / 2)
+        z = z + self.origin[0]
+        y = y + self.origin[1]
+        x = x + self.origin[2]
         xy, phi = Coordinates.cartesianToPolar(y, x)
         radius, theta = Coordinates.cartesianToPolar(z, xy)
         return radius, theta, phi
@@ -541,9 +543,9 @@ class Coordinates(object):
     def sphericalToCartesian(self, radius, theta, phi):
         xy, z = Coordinates.polarToCartesian(radius, theta)
         y, x = Coordinates.polarToCartesian(xy, phi)
-        z = z - (self.origin[0] / 2)
-        y = y - (self.origin[1] / 2)
-        x = x - (self.origin[2] / 2)
+        z = z + self.origin[0]
+        y = y + self.origin[1]
+        x = x + self.origin[2]
         return z, y, x
 
 
@@ -567,14 +569,33 @@ class Correlator(object):
         self.correlationProfile = None
 
 
-    def calculateAutocorrelation(self):
+    def reset(self):
+        self.correlationImage = None
+        self.correlationProfile = None
+
+
+    def calculateAutoCorrelation(self):
         image = self.image1
         self.correlationImage = correlate(image, image)
 
 
-    def calculateAutocorrelationProfile(self):
+    def calculateCrossCorrelation(self):
+        self.correlationImage = correlate(self.image1, self.image2)
+
+
+    def calculateAutoCorrelationProfile(self):
         if self.correlationImage is None:
-            self.calculateAutocorrelation()
+            self.calculateAutoCorrelation()
+        self.calculateRadialCorrelationProfile()
+
+
+    def calculateCrossCorrelationProfile(self):
+        if self.correlationImage is None:
+            self.calculateCrossCorrelation()
+        self.calculateRadialCorrelationProfile()
+
+
+    def calculateRadialCorrelationProfile(self):
         maxRadius = min(self.correlationImage.shape) // 2
         originZ, originY, originX = (self.correlationImage.shape[0] // 2,
                                      self.correlationImage.shape[1] // 2,
@@ -587,12 +608,22 @@ class Correlator(object):
             for inclination in inclinations:
                 for azimuth in azimuths:
                     z, y, x = coords.sphericalToCartesian(radius, inclination, azimuth)
-                    z ,y, x = round(z) + originZ + radius - 1, round(y) + originY + radius - 1, round(x) + originX + radius - 1
+                    z ,y, x = round(z), round(y), round(x)
                     meanByRadius[i] = meanByRadius[i] + self.correlationImage[z, y, x]
             meanByRadius[i] = meanByRadius[i] / N
-        self.correlationProfile = (radii, meanByRadius)
+        self.correlationProfile = (radii, meanByRadius / meanByRadius[0])
 
 
-
-
-
+    def drawSphere(self, radius):
+        originZ, originY, originX = (self.correlationImage.shape[0] // 2,
+                                     self.correlationImage.shape[1] // 2,
+                                     self.correlationImage.shape[2] // 2)
+        coords = Coordinates((originZ, originY, originX))
+        _, inclinations, azimuths = Coordinates.getSphereRanges(radius)
+        surfaceImage = np.zeros(self.correlationImage.shape)
+        for inclination in inclinations:
+            for azimuth in azimuths:
+                z, y, x = coords.sphericalToCartesian(radius, inclination, azimuth)
+                z, y, x = round(z), round(y), round(x)
+                surfaceImage[z, y, x] = 255
+        return surfaceImage
