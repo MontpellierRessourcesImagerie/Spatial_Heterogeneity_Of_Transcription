@@ -79,7 +79,7 @@ class SpotDetection:
         self.threshold = 4
         self.shallRemoveDuplicates = True
         self.shallFindThreshold = False
-        self.scale = (50, 50, 50)
+        self.scale = (1, 1, 1)
         self.spotRadius = 150
 
 
@@ -118,7 +118,7 @@ class SpotPerCellAnalyzer:
     def getBaseMeasurements(self):
         self._calculateSpotsPerCell()
         props = regionprops_table(self.labels, properties=('label', 'area'),
-                                  spacing=(self.scale, self.scale, self.scale))
+                                  spacing=self.scale)
         table = {'label': [], 'nucleus_volume': [], 'spots': []}
         for label in range(1, self.maxLabel + 1):
             index = np.where(props['label']==label)[0][0]
@@ -196,11 +196,11 @@ class SpotPerCellAnalyzer:
         for label in range(1, self.maxLabel + 1):
             hull = self.getConvexHull(label)
             table['label'].append(label)
-            table['hull_volume'].append(hull.volume * self.scale * self.scale * self.scale)
-            table['hull_area'].append(hull.area * self.scale * self.scale)
+            table['hull_volume'].append(hull.volume * self.scale[0] * self.scale[1] * self.scale[2])
+            table['hull_area'].append(hull.area * self.scale[1] * self.scale[2])
             table['hull_vertices'].append(len(hull.vertices))
             table['hull_simplices'].append(len(hull.simplices))
-            bounds = (hull.max_bound - hull.min_bound) * self.scale
+            bounds = (hull.max_bound - hull.min_bound) * self.scale[1]
             table['bb_depth'].append(bounds[0])
             table['bb_height'].append(bounds[1])
             table['bb_width'].append(bounds[2])
@@ -226,7 +226,7 @@ class SpotPerCellAnalyzer:
             volumes = []
             for a, b, c, d in tess.points[tess.simplices]:
                 volumes.append(self.tetravol(a, b, c, d))
-            volumes = np.array(volumes) * self.scale * self.scale * self.scale
+            volumes = np.array(volumes) * self.scale[2] * self.scale[1] * self.scale[0]
             table['label'].append(label)
             table['min_delaunay_vol'].append(np.min(volumes))
             table['mean_delaunay_vol'].append(np.mean(volumes))
@@ -281,7 +281,7 @@ class SpotPerCellAnalyzer:
     def getNNDistancesFor(self, data):
         kdtree = KDTree(data)
         dist, points = kdtree.query(data, 2)
-        nnDistances = (dist[:,1] * self.scale, points)
+        nnDistances = (dist[:,1] * self.scale[1], points)
         return nnDistances
 
 
@@ -297,7 +297,7 @@ class SpotPerCellAnalyzer:
     def getEmptySpaceDistancesFor(self, data, refPoints):
         kdtree = KDTree(data)
         dist, points = kdtree.query(refPoints, 2)
-        nnDistances = (dist[:, 1] * self.scale, points)
+        nnDistances = (dist[:, 1] * self.scale[1], points)
         return nnDistances
 
 
@@ -312,7 +312,7 @@ class SpotPerCellAnalyzer:
     def getAllDistancesFor(self, data):
         N = len(data)
         dist = cdist(data, data, 'euclidean')
-        allDistances = (dist[np.triu_indices(N, 1)] * self.scale, data)
+        allDistances = (dist[np.triu_indices(N, 1)] * self.scale[1], data)
         return allDistances
 
 
@@ -373,7 +373,7 @@ class SpotPerCellAnalyzer:
         maxDist = np.max(self.emptySpaceDistances[label][0])
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale)))
+        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale[1])))
         envelops = np.zeros((nrOfSamples, len(xValues)))
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
@@ -399,7 +399,7 @@ class SpotPerCellAnalyzer:
     def getEnvelopForDistanceFunction(self, label, distanceFunction, maxDist, nrOfSamples=100):
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist+1), self.scale)))
+        xValues = np.array(list(range(0, math.floor(maxDist+1), self.scale[1])))
         envelops = np.zeros((nrOfSamples, len(xValues)))
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
@@ -425,12 +425,12 @@ class SpotPerCellAnalyzer:
     def getEnvelopFromECDFsOrdering(self, label, distanceFunction, maxDist, nrOfSamples=100):
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale)))
+        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale[1])))
         scoredECDFs = []
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
             distances = distanceFunction(points)[0]
-            scoredECDF = ScoredECDF(ecdf(distances), maxDist, self.scale)
+            scoredECDF = ScoredECDF(ecdf(distances), maxDist, self.scale[1])
             scoredECDFs.append(scoredECDF)
         scoredECDFs.sort(key = lambda x: x.score)
         minEnv = scoredECDFs[0].yValues
