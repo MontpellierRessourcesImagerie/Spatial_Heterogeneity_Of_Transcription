@@ -80,7 +80,7 @@ class SpotDetection:
         self.shallRemoveDuplicates = True
         self.shallFindThreshold = False
         self.scale = (1, 1, 1)
-        self.spotRadius = 150
+        self.spotRadius = (2.5, 2.5, 2.5)
 
 
     def run(self):
@@ -92,6 +92,34 @@ class SpotDetection:
             return_threshold=self.shallFindThreshold,
             voxel_size=self.scale,
             spot_radius=self.spotRadius)
+        yield
+
+
+
+class DecomposeDenseRegions:
+
+
+    def __init__(self, image, spots):
+        self.image = image
+        self.spots = spots
+        self.voxelSize = (1, 1, 1)
+        self.spotRadius = (2.5, 2.5, 2.5)
+        self.alpha = 0.5
+        self.beta = 1
+        self.gamma = 5
+        self.referenceSpot = None
+        self.decomposedSpots = None
+
+
+    def run(self):
+        yield
+        self.decomposedSpots, _, self.referenceSpot = detection.decompose_dense(
+                    self.image,
+                    self.spots,
+                    self.voxelSize,
+                    self.spotRadius,
+                    alpha=self.alpha, beta=self.beta, gamma=self.gamma
+        )
         yield
 
 
