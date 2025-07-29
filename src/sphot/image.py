@@ -69,6 +69,14 @@ class Segmentation:
         self.labels = labels
 
 
+    @classmethod
+    def keepLabels(cls, labels, labelList):
+        newLabels = np.where(np.isin(labels, labelList), labels, 0)
+        for index, label in enumerate(labelList, start=1):
+            newLabels[newLabels == label] = index
+        return newLabels
+
+
 
 class SpotDetection:
 
@@ -92,6 +100,7 @@ class SpotDetection:
             return_threshold=self.shallFindThreshold,
             voxel_size=self.scale,
             spot_radius=self.spotRadius)
+        self.spots = np.unique(self.spots, axis=0)
         yield
 
 
@@ -120,6 +129,7 @@ class DecomposeDenseRegions:
                     self.spotRadius,
                     alpha=self.alpha, beta=self.beta, gamma=self.gamma
         )
+        self.decomposedSpots = np.unique(self.decomposedSpots, axis=0)
         yield
 
 
@@ -294,7 +304,7 @@ class SpotPerCellAnalyzer:
         for i in range(0, maxLabel + 1):
             self.pointsPerCell[i] = []
         for point in self.points:
-            label = self.labels[point[0], point[1], point[2]]
+            label = self.labels[int(point[0]), int(point[1]), int(point[2])]
             self.pointsPerCell[label].append(point)
 
 
@@ -387,21 +397,21 @@ class SpotPerCellAnalyzer:
 
     def getEnvelopForNNDistances(self, label, nrOfSamples=100):
         maxDist = np.max(self.nnDistances[label][0])
-        # return self.getEnvelopForDistanceFunction(label, self.getNNDistancesFor, maxDist, nrOfSamples)
-        return self.getEnvelopFromECDFsOrdering(label, self.getNNDistancesFor, maxDist, nrOfSamples)
+        return self.getEnvelopForDistanceFunction(label, self.getNNDistancesFor, maxDist, nrOfSamples=nrOfSamples)
+        # return self.getEnvelopFromECDFsOrdering(label, self.getNNDistancesFor, maxDist, nrOfSamples=nrOfSamples)
 
 
     def getEnvelopForAllDistances(self, label, nrOfSamples=100):
         maxDist = np.max(self.allDistances[label][0])
-        # return self.getEnvelopForDistanceFunction(label, self.getAllDistancesFor, maxDist, nrOfSamples)
-        return self.getEnvelopFromECDFsOrdering(label, self.getAllDistancesFor, maxDist, nrOfSamples)
+        return self.getEnvelopForDistanceFunction(label, self.getAllDistancesFor, maxDist, nrOfSamples=nrOfSamples)
+        # return self.getEnvelopFromECDFsOrdering(label, self.getAllDistancesFor, maxDist, nrOfSamples=nrOfSamples)
 
 
     def getEnvelopForEmptySpaceDistances(self, label, nrOfSamples=100):
         maxDist = np.max(self.emptySpaceDistances[label][0])
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale[1])))
+        xValues = np.array(list(np.arange(0, math.floor(maxDist + 1), self.scale[1])))
         envelops = np.zeros((nrOfSamples, len(xValues)))
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
@@ -427,7 +437,7 @@ class SpotPerCellAnalyzer:
     def getEnvelopForDistanceFunction(self, label, distanceFunction, maxDist, nrOfSamples=100):
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist+1), self.scale[1])))
+        xValues = np.array(list(np.arange(0, math.floor(maxDist+1), self.scale[1])))
         envelops = np.zeros((nrOfSamples, len(xValues)))
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
@@ -453,7 +463,6 @@ class SpotPerCellAnalyzer:
     def getEnvelopFromECDFsOrdering(self, label, distanceFunction, maxDist, nrOfSamples=100):
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
-        xValues = np.array(list(range(0, math.floor(maxDist + 1), self.scale[1])))
         scoredECDFs = []
         for i in range(nrOfSamples):
             points = self.getRandomPointsForLabel(label)
@@ -655,3 +664,61 @@ class Correlator(object):
                 z, y, x = round(z), round(y), round(x)
                 surfaceImage[z, y, x] = 255
         return surfaceImage
+
+
+
+class SpatialStatFunction(object):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super().__init__()
+        self.nrOfSamples = 100
+        self.spots = spots
+        self.labels = labels
+        self.scale = scale
+        self.label = label
+        self.envelop = None
+        self.analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+
+
+    def run(self):
+        self.subclassResponsability()
+
+
+
+class FFunctionTask(SpatialStatFunction):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(FFunctionTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        self.analyzer.calculateFFunction()
+        self.envelop = self.analyzer.getEnvelopForEmptySpaceDistances(self.label, nrOfSamples=self.nrOfSamples)
+
+
+
+class GFunctionTask(SpatialStatFunction):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(GFunctionTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        self.analyzer.calculateGFunction()
+        self.envelop = self.analyzer.getEnvelopForNNDistances(self.label, nrOfSamples=self.nrOfSamples)
+
+
+
+class HFunctionTask(SpatialStatFunction):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(HFunctionTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        self.analyzer.calculateHFunction()
+        self.envelop = self.analyzer.getEnvelopForAllDistances(self.label, nrOfSamples=self.nrOfSamples)
