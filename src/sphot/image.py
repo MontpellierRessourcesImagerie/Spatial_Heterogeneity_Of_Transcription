@@ -13,7 +13,7 @@ from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 from scipy.stats import ecdf
 from scipy.spatial.distance import cdist
-
+from sphot.measure import TableTool
 
 
 class Segmentation:
@@ -722,3 +722,101 @@ class HFunctionTask(SpatialStatFunction):
     def run(self):
         self.analyzer.calculateHFunction()
         self.envelop = self.analyzer.getEnvelopForAllDistances(self.label, nrOfSamples=self.nrOfSamples)
+
+
+
+class TesselationTask(object):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super().__init__()
+        self.spots = spots
+        self.labels = labels
+        self.scale = scale
+        self.label = label
+        self.result = None
+        self.analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+
+
+    def run(self):
+        self.subclassResponsability()
+
+
+
+class ConvexHullTask(TesselationTask):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(ConvexHullTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        self.result = analyzer.getConvexHull(self.label)
+
+
+
+class DelaunayTask(TesselationTask):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(DelaunayTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        self.result = analyzer.getDelaunay(self.label)
+
+
+class VoronoiTask(TesselationTask):
+
+
+    def __init__(self, spots, labels, scale, label):
+        super(VoronoiTask, self).__init__(spots, labels, scale, label)
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        self.result = analyzer.getVoronoiRegions(self.label)
+
+
+
+class MeasureTask:
+
+
+    def __init__(self, spots, labels, scale):
+        self.spots = spots
+        self.labels = labels
+        self.scale = scale
+        self.analyzer = SpotPerCellAnalyzer(spots, labels, scale)
+        self.table = None
+
+
+    def run(self):
+        baseMeasurements = self.analyzer.getBaseMeasurements()
+        nnMeasurements = self.analyzer.getNNMeasurements()
+        nnMeasurements.pop('label')
+        TableTool.addColumnsTableAToB(nnMeasurements, baseMeasurements)
+        convexHullMeasurements = self.analyzer.getConvexHullMeasurements()
+        convexHullMeasurements.pop('label')
+        TableTool.addColumnsTableAToB(convexHullMeasurements, baseMeasurements)
+        delaunayMeasurements = self.analyzer.getDelaunayMeasurements()
+        delaunayMeasurements.pop('label')
+        TableTool.addColumnsTableAToB(delaunayMeasurements, baseMeasurements)
+        self.table = baseMeasurements
+
+
+
+class CropLabelTask:
+
+
+    def __init__(self, labels, image, label):
+        self.labels = labels
+        self.image = image
+        self.label = label
+        self.result = None
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(None, self.labels, 1)
+        self.result = analyzer.cropImageForLabel(self.image, self.label)
