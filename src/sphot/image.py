@@ -784,10 +784,11 @@ class VoronoiTask(TesselationTask):
 class MeasureTask:
 
 
-    def __init__(self, spots, labels, scale):
+    def __init__(self, spots, labels, scale, units):
         self.spots = spots
         self.labels = labels
         self.scale = scale
+        self.units = units
         self.analyzer = SpotPerCellAnalyzer(spots, labels, scale)
         self.table = None
 
@@ -804,6 +805,7 @@ class MeasureTask:
         delaunayMeasurements.pop('label')
         TableTool.addColumnsTableAToB(delaunayMeasurements, baseMeasurements)
         self.table = baseMeasurements
+        self.table['base unit'] = [self.unit[0]]*len(self.table['label'])
 
 
 
