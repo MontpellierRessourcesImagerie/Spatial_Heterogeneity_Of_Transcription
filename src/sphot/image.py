@@ -604,6 +604,7 @@ class Correlator(object):
         self.image2 = image2
         self.correlationImage = None
         self.correlationProfile = None
+        self.usePadding = True
 
 
     def reset(self):
@@ -613,11 +614,24 @@ class Correlator(object):
 
     def calculateAutoCorrelation(self):
         image = self.image1
-        self.correlationImage = correlate(image, image)
+        if self.usePadding:
+            image = self.pad(image)
+        self.correlationImage = correlate(image, image, mode="valid")
 
 
     def calculateCrossCorrelation(self):
-        self.correlationImage = correlate(self.image1, self.image2)
+        image1 = self.image1
+        image2 = self.image2
+        if self.usePadding:
+            image1 = self.pad(image1)
+            image2 = self.pad(image2)
+        print(image1.shape)
+        self.correlationImage = correlate(image1, image2,  mode="valid")
+
+
+    def pad(self, image):
+        paddedImage = np.pad(image, max(image.shape), mode='edge')
+        return paddedImage
 
 
     def calculateAutoCorrelationProfile(self):
@@ -805,7 +819,7 @@ class MeasureTask:
         delaunayMeasurements.pop('label')
         TableTool.addColumnsTableAToB(delaunayMeasurements, baseMeasurements)
         self.table = baseMeasurements
-        self.table['base unit'] = [self.unit[0]]*len(self.table['label'])
+        self.table['base unit'] = [self.units[0]]*len(self.table['label'])
 
 
 
