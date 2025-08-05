@@ -605,6 +605,7 @@ class Correlator(object):
         self.correlationImage = None
         self.correlationProfile = None
         self.usePadding = True
+        self.paddingMode = 'wrap'
 
 
     def reset(self):
@@ -614,23 +615,34 @@ class Correlator(object):
 
     def calculateAutoCorrelation(self):
         image = self.image1
+        image1 = image
         if self.usePadding:
-            image = self.pad(image)
-        self.correlationImage = correlate(image, image, mode="valid")
+            image1 = self.pad(image)
+        self.correlationImage = correlate(image1, image, mode="valid")
 
 
     def calculateCrossCorrelation(self):
-        image1 = self.image1
-        image2 = self.image2
+        image1 = np.copy(self.image1)
+        image2 = np.copy(self.image2)
+        max1 = np.max(image1) * 2
+        max2 = np.max(image2) * 2
+        print(max1, max2)
+        image1Indices = np.argwhere(image1 == 0)
+        image2Indices = np.argwhere(image2 == 0)
+        for index1 in image1Indices:
+            image1[index1[0], index1[1], index1[2]] = random.randint(1, max1)
+        for index2 in image2Indices:
+            image2[index2[0], index2[1], index2[2]] = random.randint(1, max2)
         if self.usePadding:
             image1 = self.pad(image1)
-            image2 = self.pad(image2)
-        print(image1.shape)
+            # image2 = self.pad(image2)
         self.correlationImage = correlate(image1, image2,  mode="valid")
 
 
     def pad(self, image):
-        paddedImage = np.pad(image, max(image.shape), mode='edge')
+        paddedImage = np.pad(image,
+                             [(image.shape[0], ), (image.shape[1],), (image.shape[2],)],
+                             mode=self.paddingMode)
         return paddedImage
 
 
