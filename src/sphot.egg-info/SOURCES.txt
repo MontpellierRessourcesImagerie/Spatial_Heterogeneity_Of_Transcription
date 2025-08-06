@@ -2,6 +2,9 @@ LICENSE
 README.md
 pyproject.toml
 src/sphot/__init__.py
+src/sphot/filter.py
+src/sphot/image.py
+src/sphot/measure.py
 src/sphot.egg-info/PKG-INFO
 src/sphot.egg-info/SOURCES.txt
 src/sphot.egg-info/dependency_links.txt

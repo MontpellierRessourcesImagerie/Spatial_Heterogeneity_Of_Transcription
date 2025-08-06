@@ -622,20 +622,14 @@ class Correlator(object):
 
 
     def calculateCrossCorrelation(self):
-        image1 = np.copy(self.image1)
-        image2 = np.copy(self.image2)
-        max1 = np.max(image1) * 2
-        max2 = np.max(image2) * 2
-        print(max1, max2)
-        image1Indices = np.argwhere(image1 == 0)
-        image2Indices = np.argwhere(image2 == 0)
-        for index1 in image1Indices:
-            image1[index1[0], index1[1], index1[2]] = random.randint(1, max1)
-        for index2 in image2Indices:
-            image2[index2[0], index2[1], index2[2]] = random.randint(1, max2)
+        image1 = self.image1.astype(float)
+        image2 = self.image2.astype(float)
+        norm1 = np.linalg.norm(image1)
+        image1 = image1 / norm1
+        norm2 = np.linalg.norm(image2)
+        image2 = image2 / norm2
         if self.usePadding:
             image1 = self.pad(image1)
-            # image2 = self.pad(image2)
         self.correlationImage = correlate(image1, image2,  mode="valid")
 
 
@@ -674,7 +668,7 @@ class Correlator(object):
                     z ,y, x = round(z), round(y), round(x)
                     meanByRadius[i] = meanByRadius[i] + self.correlationImage[z, y, x]
             meanByRadius[i] = meanByRadius[i] / N
-        self.correlationProfile = (radii, meanByRadius / meanByRadius[0])
+        self.correlationProfile = (radii, meanByRadius)
 
 
     def drawSphere(self, radius):
