@@ -690,12 +690,13 @@ class Correlator(object):
 class SpatialStatFunction(object):
 
 
-    def __init__(self, spots, labels, scale, label):
+    def __init__(self, spots, labels, scale, unit, label):
         super().__init__()
         self.nrOfSamples = 100
         self.spots = spots
         self.labels = labels
         self.scale = scale
+        self.unit = unit
         self.label = label
         self.envelop = None
         self.analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
@@ -709,8 +710,8 @@ class SpatialStatFunction(object):
 class FFunctionTask(SpatialStatFunction):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(FFunctionTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(FFunctionTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
@@ -722,8 +723,8 @@ class FFunctionTask(SpatialStatFunction):
 class GFunctionTask(SpatialStatFunction):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(GFunctionTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(GFunctionTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
@@ -735,8 +736,8 @@ class GFunctionTask(SpatialStatFunction):
 class HFunctionTask(SpatialStatFunction):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(HFunctionTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(HFunctionTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
@@ -748,11 +749,12 @@ class HFunctionTask(SpatialStatFunction):
 class TesselationTask(object):
 
 
-    def __init__(self, spots, labels, scale, label):
+    def __init__(self, spots, labels, scale, unit, label):
         super().__init__()
         self.spots = spots
         self.labels = labels
         self.scale = scale
+        self.unit = unit
         self.label = label
         self.result = None
         self.analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
@@ -766,8 +768,8 @@ class TesselationTask(object):
 class ConvexHullTask(TesselationTask):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(ConvexHullTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(ConvexHullTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
@@ -779,8 +781,8 @@ class ConvexHullTask(TesselationTask):
 class DelaunayTask(TesselationTask):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(DelaunayTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(DelaunayTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
@@ -791,8 +793,8 @@ class DelaunayTask(TesselationTask):
 class VoronoiTask(TesselationTask):
 
 
-    def __init__(self, spots, labels, scale, label):
-        super(VoronoiTask, self).__init__(spots, labels, scale, label)
+    def __init__(self, spots, labels, scale, unit, label):
+        super(VoronoiTask, self).__init__(spots, labels, scale, unit, label)
 
 
     def run(self):
