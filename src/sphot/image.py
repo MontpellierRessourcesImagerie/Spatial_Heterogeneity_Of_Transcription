@@ -151,6 +151,8 @@ class SpotPerCellAnalyzer:
         self.nrOfEmptySpacePoints = 1000
         self.emptySpacePointsPerCell = {}
         self.emptySpaceDistances = {}
+        self.centroids = {}
+        self.distancesFromCentroid = {}
 
 
     def getBaseMeasurements(self):
@@ -297,6 +299,12 @@ class SpotPerCellAnalyzer:
         self.calculateEmptySpaceECDFs()
 
 
+    def calculateDistancesFromCentroid(self):
+        self._calculateSpotsPerCell()
+        self.distancesFromCentroid = self.getDistancesFromCentroid()
+        self.calculateCentroidECDFs()
+
+
     def _calculateSpotsPerCell(self):
         if self.pointsPerCell:
             return
@@ -323,6 +331,15 @@ class SpotPerCellAnalyzer:
         return nnDistances
 
 
+    def getDistancesFromCentroid(self):
+        props = regionprops(self.labels)
+        for label in range(1, self.maxLabel + 1):
+            self.centroids[label] = props[label].centroid
+            data = self.pointsPerCell[label]
+            self.distancesFromCentroid[label] = self.getDistancesFromCentroidFor(data, self.centroids[label])
+        return self.distancesFromCentroid
+
+
     def getEmptySpaceDistances(self):
         emptySpaceDistances = {}
         for label in range(1, self.maxLabel + 1):
@@ -337,6 +354,14 @@ class SpotPerCellAnalyzer:
         dist, points = kdtree.query(refPoints, 2)
         nnDistances = (dist[:, 1] * self.scale[1], points)
         return nnDistances
+
+
+    def getDistancesFromCentroidFor(self, data, centroid):
+        distances = []
+        for point in data:
+            distances.append(np.linalg.norm(np.array(point) - np.array(centroid)))
+        distances.sort()
+        return distances
 
 
     def getAllDistances(self):
