@@ -236,11 +236,11 @@ class SpotPerCellAnalyzer:
         for label in range(1, self.maxLabel + 1):
             hull = self.getConvexHull(label)
             table['label'].append(label)
-            table['hull_volume'].append(hull.volume * self.scale[0] * self.scale[1] * self.scale[2])
-            table['hull_area'].append(hull.area * self.scale[1] * self.scale[2])
+            table['hull_volume'].append(hull.volume)
+            table['hull_area'].append(hull.area)
             table['hull_vertices'].append(len(hull.vertices))
             table['hull_simplices'].append(len(hull.simplices))
-            bounds = (hull.max_bound - hull.min_bound) * self.scale[1]
+            bounds = hull.max_bound - hull.min_bound
             table['bb_depth'].append(bounds[0])
             table['bb_height'].append(bounds[1])
             table['bb_width'].append(bounds[2])
@@ -266,7 +266,7 @@ class SpotPerCellAnalyzer:
             volumes = []
             for a, b, c, d in tess.points[tess.simplices]:
                 volumes.append(self.tetravol(a, b, c, d))
-            volumes = np.array(volumes) * self.scale[2] * self.scale[1] * self.scale[0]
+            volumes = np.array(volumes)
             table['label'].append(label)
             table['min_delaunay_vol'].append(np.min(volumes))
             table['mean_delaunay_vol'].append(np.mean(volumes))
@@ -313,7 +313,7 @@ class SpotPerCellAnalyzer:
             self.pointsPerCell[i] = []
         for point in self.points:
             label = self.labels[int(point[0]), int(point[1]), int(point[2])]
-            self.pointsPerCell[label].append(point)
+            self.pointsPerCell[label].append(point * self.scale)
 
 
     def getNNDistances(self):
@@ -327,7 +327,7 @@ class SpotPerCellAnalyzer:
     def getNNDistancesFor(self, data):
         kdtree = KDTree(data)
         dist, points = kdtree.query(data, 2)
-        nnDistances = (dist[:,1] * self.scale[1], points)
+        nnDistances = (dist[:,1], points)
         return nnDistances
 
 
@@ -352,7 +352,7 @@ class SpotPerCellAnalyzer:
     def getEmptySpaceDistancesFor(self, data, refPoints):
         kdtree = KDTree(data)
         dist, points = kdtree.query(refPoints, 2)
-        nnDistances = (dist[:, 1] * self.scale[1], points)
+        nnDistances = (dist[:, 1], points)
         return nnDistances
 
 
@@ -375,7 +375,7 @@ class SpotPerCellAnalyzer:
     def getAllDistancesFor(self, data):
         N = len(data)
         dist = cdist(data, data, 'euclidean')
-        allDistances = (dist[np.triu_indices(N, 1)] * self.scale[1], data)
+        allDistances = (dist[np.triu_indices(N, 1)], data)
         return allDistances
 
 
