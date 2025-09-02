@@ -190,19 +190,19 @@ class SpotPerCellAnalyzer:
 
     def getConvexHull(self, label):
         self._calculateSpotsPerCell()
-        hull = ConvexHull(self.pointsPerCell[label])
+        hull = ConvexHull(self.pointsPerCell[label] / self.scale)
         return hull
 
 
     def getDelaunay(self, label):
         self._calculateSpotsPerCell()
-        tess = Delaunay(self.pointsPerCell[label])
+        tess = Delaunay(self.pointsPerCell[label] / self.scale)
         return tess
 
 
     def getVoronoi(self, label):
         self._calculateSpotsPerCell()
-        voro = Voronoi(self.pointsPerCell[label])
+        voro = Voronoi(self.pointsPerCell[label] / self.scale)
         return voro
 
 
@@ -407,7 +407,7 @@ class SpotPerCellAnalyzer:
         labelsForLabel[labelsForLabel < label] = 0
         labelsForLabel[labelsForLabel > label] = 0
         nz = np.nonzero(labelsForLabel)
-        coords = np.transpose(nz)
+        coords = np.transpose(nz) * self.scale
         maxSample = len(coords) - 1
         indices = random.sample(range(maxSample + 1), N)
         randPoints = coords[indices]
