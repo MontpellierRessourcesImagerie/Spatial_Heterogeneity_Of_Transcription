@@ -188,6 +188,24 @@ class SpotPerCellAnalyzer:
         return table
 
 
+    def getDistanceFromCentroidMeasurements(self):
+        self.calculateDistancesFromCentroid()
+        table = {'label': [],
+                 'min_centroid_dist': [],
+                 'mean_centroid_dist': [],
+                 'std_dev_centroid_dist': [],
+                 'median_centroid_dist': [],
+                 'max_centroid_dist': []}
+        for label in range(1, self.maxLabel + 1):
+            table['label'].append(label)
+            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
+            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
+            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
+            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
+            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+        return table
+
+
     def getConvexHull(self, label):
         self._calculateSpotsPerCell()
         hull = ConvexHull(self.pointsPerCell[label] / self.scale)
@@ -302,7 +320,6 @@ class SpotPerCellAnalyzer:
     def calculateDistancesFromCentroid(self):
         self._calculateSpotsPerCell()
         self.distancesFromCentroid = self.getDistancesFromCentroid()
-        self.calculateCentroidECDFs()
 
 
     def _calculateSpotsPerCell(self):
@@ -332,9 +349,10 @@ class SpotPerCellAnalyzer:
 
 
     def getDistancesFromCentroid(self):
-        props = regionprops(self.labels)
-        for label in range(1, self.maxLabel + 1):
-            self.centroids[label] = props[label].centroid
+        props = regionprops(self.labels, spacing=self.scale)
+        for prop in props:
+            label = prop.label
+            self.centroids[label] = prop.centroid
             data = self.pointsPerCell[label]
             self.distancesFromCentroid[label] = self.getDistancesFromCentroidFor(data, self.centroids[label])
         return self.distancesFromCentroid
@@ -842,6 +860,9 @@ class MeasureTask:
 
     def run(self):
         baseMeasurements = self.analyzer.getBaseMeasurements()
+        centroidMeasurements = self.analyzer.getDistanceFromCentroidMeasurements()
+        centroidMeasurements.pop('label')
+        TableTool.addColumnsTableAToB(centroidMeasurements, baseMeasurements)
         nnMeasurements = self.analyzer.getNNMeasurements()
         nnMeasurements.pop('label')
         TableTool.addColumnsTableAToB(nnMeasurements, baseMeasurements)
