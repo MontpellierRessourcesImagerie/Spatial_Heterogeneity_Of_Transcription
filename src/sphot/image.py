@@ -3,17 +3,20 @@ import random
 import numpy as np
 from scipy.signal import correlate
 from skimage.segmentation import clear_border
-from skimage.morphology import remove_small_objects
+from skimage.morphology import remove_small_objects, ball
 from skimage.segmentation import relabel_sequential
 from skimage.measure import regionprops_table
 from skimage.measure import regionprops
 from bigfish import detection
+import scipy
 from scipy.spatial import KDTree, Voronoi
 from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 from scipy.stats import ecdf
 from scipy.spatial.distance import cdist
 from sphot.measure import TableTool
+from sphot.arrayutils import NDArrayUtil
+
 
 
 class Segmentation:
@@ -153,6 +156,8 @@ class SpotPerCellAnalyzer:
         self.emptySpaceDistances = {}
         self.centroids = {}
         self.distancesFromCentroid = {}
+        self.radii = None
+        self.densityPerRadius = None
 
 
     def getBaseMeasurements(self):
@@ -185,24 +190,6 @@ class SpotPerCellAnalyzer:
             table['std_dev_nn_dist'].append(np.std(self.nnDistances[label][0]))
             table['median_nn_dist'].append(np.median(self.nnDistances[label][0]))
             table['max_nn_dist'].append(np.max(self.nnDistances[label][0]))
-        return table
-
-
-    def getDistanceFromCentroidMeasurements(self):
-        self.calculateDistancesFromCentroid()
-        table = {'label': [],
-                 'min_centroid_dist': [],
-                 'mean_centroid_dist': [],
-                 'std_dev_centroid_dist': [],
-                 'median_centroid_dist': [],
-                 'max_centroid_dist': []}
-        for label in range(1, self.maxLabel + 1):
-            table['label'].append(label)
-            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
-            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
-            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
-            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
-            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
         return table
 
 
@@ -320,6 +307,37 @@ class SpotPerCellAnalyzer:
     def calculateDistancesFromCentroid(self):
         self._calculateSpotsPerCell()
         self.distancesFromCentroid = self.getDistancesFromCentroid()
+        return self.distancesFromCentroid
+
+
+    def calculateDensityPerRadiusFor(self, label):
+        self.calculateDistancesFromCentroid()
+        image = self.getCroppedLabelMask(label)
+        minIndex = np.argmax(image.shape)
+        maxRadius = image.shape[minIndex] * self.scale[minIndex] / 2
+        self.radii = np.arange(0, maxRadius, self.scale[minIndex])
+        self.densityPerRadius = np.zeros(self.radii.shape)
+        points = self.pointsPerCell[label]
+        centroid = self.centroids[label]
+        kdtree = KDTree(points)
+        mask = np.where(image > 0, 255, 0)
+        props = regionprops(mask)
+        for index, radius in enumerate(self.radii):
+            sphere = ball(radius)
+            padded_sphere = NDArrayUtil.pad(sphere, *mask.shape)
+            shifted_sphere = scipy.ndimage.shift(padded_sphere,
+                                                 props[0].centroid - padded_sphere.shape // np.array([2, 2, 2]))
+            intersectionMask = mask * shifted_sphere
+            result_props = regionprops(intersectionMask)
+            volume = 0
+            if len(result_props) > 0:
+                volume = result_props[0].area
+            nrOfPoints = len(kdtree.query_ball_point(centroid, radius))
+            print("nrOfPoints", nrOfPoints)
+            density = 0
+            if volume > 0:
+                density = nrOfPoints / volume
+            self.densityPerRadius[index] = density
 
 
     def _calculateSpotsPerCell(self):
@@ -352,10 +370,30 @@ class SpotPerCellAnalyzer:
         props = regionprops(self.labels, spacing=self.scale)
         for prop in props:
             label = prop.label
+            if label == 0:
+                continue
             self.centroids[label] = prop.centroid
             data = self.pointsPerCell[label]
             self.distancesFromCentroid[label] = self.getDistancesFromCentroidFor(data, self.centroids[label])
         return self.distancesFromCentroid
+
+
+    def getDistanceFromCentroidMeasurements(self):
+        self.calculateDistancesFromCentroid()
+        table = {'label': [],
+                 'min_centroid_dist': [],
+                 'mean_centroid_dist': [],
+                 'std_dev_centroid_dist': [],
+                 'median_centroid_dist': [],
+                 'max_centroid_dist': []}
+        for label in range(1, self.maxLabel + 1):
+            table['label'].append(label)
+            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
+            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
+            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
+            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
+            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+        return table
 
 
     def getEmptySpaceDistances(self):
@@ -554,6 +592,13 @@ class SpotPerCellAnalyzer:
         return result
 
 
+    def getCroppedLabelMask(self, label):
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        result = self.labels[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
+        result = (result == label) * 255
+        return result
+
 
 class ScoredECDF:
 
@@ -746,7 +791,11 @@ class SpatialStatFunction(object):
 
 
     def run(self):
-        self.subclassResponsability()
+        self.subclassResponsibility()
+
+
+    def subclassResponsibility(self):
+        raise Exception("An abstract method has been called! The subclass should have overriden it.")
 
 
 
@@ -804,8 +853,11 @@ class TesselationTask(object):
 
 
     def run(self):
-        self.subclassResponsability()
+        self.subclassResponsibility()
 
+
+    def subclassResponsibility(self):
+        raise Exception("An abstract method has been called! The subclass should have overriden it.")
 
 
 class ConvexHullTask(TesselationTask):
@@ -890,3 +942,20 @@ class CropLabelTask:
     def run(self):
         analyzer = SpotPerCellAnalyzer(None, self.labels, 1)
         self.result = analyzer.cropImageForLabel(self.image, self.label)
+
+
+
+class DistancesFromCentroidTask:
+
+
+    def __init__(self, labels, spots,  scale, units):
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.table = None
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        self.table = analyzer.calculateDistancesFromCentroid()
