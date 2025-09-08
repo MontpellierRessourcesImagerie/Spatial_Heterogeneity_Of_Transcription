@@ -313,9 +313,10 @@ class SpotPerCellAnalyzer:
     def calculateDensityPerRadiusFor(self, label):
         self.calculateDistancesFromCentroid()
         image = self.getCroppedLabelMask(label)
-        minIndex = np.argmax(image.shape)
-        maxRadius = image.shape[minIndex] * self.scale[minIndex] / 2
-        self.radii = np.arange(0, maxRadius, self.scale[minIndex])
+        maxIndex = np.argmax(image.shape)
+        scale = self.scale[maxIndex]
+        maxRadius = (image.shape[maxIndex] * scale) / 2
+        self.radii = np.arange(0, maxRadius, scale)
         self.densityPerRadius = np.zeros(self.radii.shape)
         points = self.pointsPerCell[label]
         centroid = self.centroids[label]
@@ -323,17 +324,16 @@ class SpotPerCellAnalyzer:
         mask = np.where(image > 0, 255, 0)
         props = regionprops(mask)
         for index, radius in enumerate(self.radii):
-            sphere = ball(radius)
-            padded_sphere = NDArrayUtil.pad(sphere, *mask.shape)
+            sphere = ball(radius / scale)
+            padded_sphere = NDArrayUtil.resizeTo(sphere, *mask.shape)
             shifted_sphere = scipy.ndimage.shift(padded_sphere,
                                                  props[0].centroid - padded_sphere.shape // np.array([2, 2, 2]))
             intersectionMask = mask * shifted_sphere
-            result_props = regionprops(intersectionMask)
+            result_props = regionprops(intersectionMask, spacing = self.scale)
             volume = 0
             if len(result_props) > 0:
                 volume = result_props[0].area
             nrOfPoints = len(kdtree.query_ball_point(centroid, radius))
-            print("nrOfPoints", nrOfPoints)
             density = 0
             if volume > 0:
                 density = nrOfPoints / volume
@@ -959,3 +959,24 @@ class DistancesFromCentroidTask:
     def run(self):
         analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
         self.table = analyzer.calculateDistancesFromCentroid()
+
+
+
+class DensityByRadiusTask:
+
+
+    def __init__(self, label, labels, spots, scale, units):
+        self.label = label
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.radii = None
+        self.densities = None
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        analyzer.calculateDensityPerRadiusFor(self.label)
+        self.radii = analyzer.radii
+        self.densities = analyzer.densityPerRadius
