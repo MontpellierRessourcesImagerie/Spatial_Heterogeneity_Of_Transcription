@@ -561,17 +561,36 @@ class SpotPerCellAnalyzer:
     @classmethod
     def getPointImageFor(cls, points):
         pointsT = np.transpose(points)
-        minZ = np.min(pointsT[0])
-        maxZ = np.max(pointsT[0])
-        minY = np.min(pointsT[1])
-        maxY = np.max(pointsT[1])
-        minX = np.min(pointsT[2])
-        maxX = np.max(pointsT[2])
+        minZ = int(np.min(pointsT[0]))
+        maxZ = int(np.max(pointsT[0]))
+        minY = int(np.min(pointsT[1]))
+        maxY = int(np.max(pointsT[1]))
+        minX = int(np.min(pointsT[2]))
+        maxX = int(np.max(pointsT[2]))
         depth = (maxZ - minZ) + 1
         height = (maxY - minY) + 1
         width = (maxX - minX) + 1
-        image = np.zeros((depth, height, width), np.uint8)
-        shiftedPoints = [np.array([z-minZ, y-minY, x-minX]) for z, y, x in points]
+        image = np.zeros((int(depth), int(height), int(width)), dtype=np.uint8)
+        shiftedPoints = [np.array([int(z)-minZ, int(y)-minY, int(x)-minX]) for z, y, x in points]
+        for z, y, x in shiftedPoints:
+            image[z][y][x] = 255
+        return image
+
+
+    def getPointImageForLabel(self, label):
+        self._calculateSpotsPerCell()
+        spots = self.pointsPerCell[label] / self.scale
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        depth = bbox[3] - bbox[0]
+        height = bbox[4] - bbox[1]
+        width = bbox[5] - bbox[2]
+        minZ = bbox[0]
+        minY = bbox[1]
+        minX = bbox[2]
+        shape = (depth, height, width)
+        image = np.zeros(shape, dtype=np.uint8)
+        shiftedPoints = [np.array([int(z) - minZ, int(y) - minY, int(x) - minX]) for z, y, x in spots]
         for z, y, x in shiftedPoints:
             image[z][y][x] = 255
         return image
