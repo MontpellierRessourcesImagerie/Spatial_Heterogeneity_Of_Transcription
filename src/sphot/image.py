@@ -7,6 +7,10 @@ from skimage.morphology import remove_small_objects, ball
 from skimage.segmentation import relabel_sequential
 from skimage.measure import regionprops_table
 from skimage.measure import regionprops
+from skimage.morphology import remove_small_holes
+from skimage.morphology import binary_dilation
+from skimage.morphology import binary_erosion
+from skimage.morphology import skeletonize
 from bigfish import detection
 import scipy
 from scipy.spatial import KDTree, Voronoi
@@ -158,6 +162,8 @@ class SpotPerCellAnalyzer:
         self.distancesFromCentroid = {}
         self.radii = None
         self.densityPerRadius = None
+        self.radiiAlongAxis = None
+        self.densitiesAlongAxis = None
 
 
     def getBaseMeasurements(self):
@@ -338,6 +344,70 @@ class SpotPerCellAnalyzer:
             if volume > 0:
                 density = nrOfPoints / volume
             self.densityPerRadius[index] = density
+
+
+    def calculateDensityAlongAxisFor(self, axis, label):
+        scale = self.scale[axis]
+        image = self.getCroppedLabelMask(label)
+        points = np.array(self.getPointsForCroppedLabel(label))
+        image, points = self.alignImageAndPointsWithAxes(image, points)
+        coords = np.array([np.array([coord * scale]) for coord in points.T[axis]])
+        kdtree = KDTree(coords)
+        props = regionprops(image, spacing=self.scale)
+        centroid = props[0].centroid
+        maxRadius = (image.shape[axis] * scale) / 2
+        self.radiiAlongAxis = np.arange(0, maxRadius, scale)
+        self.densitiesAlongAxis = np.zeros_like(self.radiiAlongAxis)
+        for index, radius in enumerate(self.radiiAlongAxis):
+            mask = self.getMaskFor(int(radius // scale), image, axis, (centroid // self.scale).astype(np.uint8))
+            intersectionMask = mask * image
+            result_props = regionprops(intersectionMask, spacing=self.scale)
+            volume = 0
+            if len(result_props) > 0:
+                volume = result_props[0].area
+            nrOfPoints = len(kdtree.query_ball_point(centroid[axis], radius))
+            density = 0
+            if volume > 0:
+                density = nrOfPoints / volume
+            self.densitiesAlongAxis[index] = density
+
+
+    @classmethod
+    def getMaskFor(self, radius, image, axis, centroid):
+        """Create a mask of the given shape with values 1 in the area defined by radius around the center"""
+        mask = np.zeros_like(image)
+        if axis == 0:
+            mask[max(int(round(centroid[0]))-int(radius), 0):min(int(round(centroid[0]))+int(radius), mask.shape[0]-1),
+                :,
+                :] = 1
+        if axis == 1:
+            mask[:,
+                 max(int(round(centroid[1]))-int(radius), 0):min(int(round(centroid[1]))+int(radius), mask.shape[1]-1),
+                :] = 1
+        if axis == 2:
+            mask[
+              :,
+              :,
+              max(int(round(centroid[2]))-int(radius), 0):min(int(round(centroid[2]))+int(radius), mask.shape[2]-1)] = 1
+        return mask
+
+
+    def alignImageAndPointsWithAxes(self, image, points):
+        props = regionprops(image)
+        centroid = props[0].centroid
+        border = binary_dilation(image) * 255 - binary_erosion(image) * 255
+        skel = skeletonize(border)
+        coords = np.where(skel > 0)
+        coords = np.transpose(coords)
+        xc = coords - centroid
+        _, _, Vh = np.linalg.svd(xc, full_matrices=True)
+        # Apply
+        iCoords = np.transpose(np.where(image > 0)) - centroid
+        tCoords = iCoords @ Vh.T
+        tImage = self.getPointImageFor(tCoords)
+        points = points - centroid
+        tPoints = points @ Vh.T
+        return tImage, tPoints
 
 
     def _calculateSpotsPerCell(self):
@@ -574,7 +644,20 @@ class SpotPerCellAnalyzer:
         shiftedPoints = [np.array([int(z)-minZ, int(y)-minY, int(x)-minX]) for z, y, x in points]
         for z, y, x in shiftedPoints:
             image[z][y][x] = 255
+        image = remove_small_holes(image) * 255
         return image
+
+
+    def getPointsForCroppedLabel(self, label):
+        self._calculateSpotsPerCell()
+        spots = self.pointsPerCell[label] / self.scale
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        minZ = bbox[0]
+        minY = bbox[1]
+        minX = bbox[2]
+        shiftedPoints = [np.array([int(z) - minZ, int(y) - minY, int(x) - minX]) for z, y, x in spots]
+        return shiftedPoints
 
 
     def getPointImageForLabel(self, label):
@@ -617,6 +700,7 @@ class SpotPerCellAnalyzer:
         result = self.labels[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
         result = (result == label) * 255
         return result
+
 
 
 class ScoredECDF:
@@ -999,3 +1083,24 @@ class DensityByRadiusTask:
         analyzer.calculateDensityPerRadiusFor(self.label)
         self.radii = analyzer.radii
         self.densities = analyzer.densityPerRadius
+
+
+class DensityAlongAxisTask:
+
+
+    def __init__(self, label, labels, spots, scale, units):
+        self.label = label
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.radii = None
+        self.densities = None
+        self.axis = 0
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        analyzer.calculateDensityAlongAxisFor(self.axis, self.label)
+        self.radii = analyzer.radiiAlongAxis
+        self.densities = analyzer.densitiesAlongAxis
