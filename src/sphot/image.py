@@ -153,6 +153,7 @@ class SpotPerCellAnalyzer:
         self.emptySpaceDistances = {}
         self.centroids = {}
         self.distancesFromCentroid = {}
+        self.notApplicableValue = np.nan
 
 
     def getBaseMeasurements(self):
@@ -180,11 +181,18 @@ class SpotPerCellAnalyzer:
                  'max_nn_dist': []}
         for label in range(1, self.maxLabel+1):
             table['label'].append(label)
-            table['min_nn_dist'].append(np.min(self.nnDistances[label][0]))
-            table['mean_nn_dist'].append(np.mean(self.nnDistances[label][0]))
-            table['std_dev_nn_dist'].append(np.std(self.nnDistances[label][0]))
-            table['median_nn_dist'].append(np.median(self.nnDistances[label][0]))
-            table['max_nn_dist'].append(np.max(self.nnDistances[label][0]))
+            if len(self.pointsPerCell[label]) > 0:
+                table['min_nn_dist'].append(np.min(self.nnDistances[label][0]))
+                table['mean_nn_dist'].append(np.mean(self.nnDistances[label][0]))
+                table['std_dev_nn_dist'].append(np.std(self.nnDistances[label][0]))
+                table['median_nn_dist'].append(np.median(self.nnDistances[label][0]))
+                table['max_nn_dist'].append(np.max(self.nnDistances[label][0]))
+            else:
+                table['min_nn_dist'].append(self.notApplicableValue)
+                table['mean_nn_dist'].append(self.notApplicableValue)
+                table['std_dev_nn_dist'].append(self.notApplicableValue)
+                table['median_nn_dist'].append(self.notApplicableValue)
+                table['max_nn_dist'].append(self.notApplicableValue)
         return table
 
 
@@ -198,11 +206,18 @@ class SpotPerCellAnalyzer:
                  'max_centroid_dist': []}
         for label in range(1, self.maxLabel + 1):
             table['label'].append(label)
-            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
-            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
-            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
-            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
-            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+            if  len(self.pointsPerCell[label]) > 0:
+                table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
+                table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
+                table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
+                table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
+                table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+            else:
+                table['min_centroid_dist'].append(self.notApplicableValue)
+                table['mean_centroid_dist'].append(self.notApplicableValue)
+                table['std_dev_centroid_dist'].append(self.notApplicableValue)
+                table['median_centroid_dist'].append(self.notApplicableValue)
+                table['max_centroid_dist'].append(self.notApplicableValue)
         return table
 
 
@@ -252,16 +267,25 @@ class SpotPerCellAnalyzer:
                  'bb_width': []
                  }
         for label in range(1, self.maxLabel + 1):
-            hull = self.getConvexHull(label)
             table['label'].append(label)
-            table['hull_volume'].append(hull.volume)
-            table['hull_area'].append(hull.area)
-            table['hull_vertices'].append(len(hull.vertices))
-            table['hull_simplices'].append(len(hull.simplices))
-            bounds = hull.max_bound - hull.min_bound
-            table['bb_depth'].append(bounds[0])
-            table['bb_height'].append(bounds[1])
-            table['bb_width'].append(bounds[2])
+            if len(self.pointsPerCell[label]) > 3:
+                hull = self.getConvexHull(label)
+                table['hull_volume'].append(hull.volume)
+                table['hull_area'].append(hull.area)
+                table['hull_vertices'].append(len(hull.vertices))
+                table['hull_simplices'].append(len(hull.simplices))
+                bounds = hull.max_bound - hull.min_bound
+                table['bb_depth'].append(bounds[0])
+                table['bb_height'].append(bounds[1])
+                table['bb_width'].append(bounds[2])
+            else:
+                table['hull_volume'].append(self.notApplicableValue)
+                table['hull_area'].append(self.notApplicableValue)
+                table['hull_vertices'].append(self.notApplicableValue)
+                table['hull_simplices'].append(self.notApplicableValue)
+                table['bb_depth'].append(self.notApplicableValue)
+                table['bb_height'].append(self.notApplicableValue)
+                table['bb_width'].append(self.notApplicableValue)
         return table
 
 
@@ -279,18 +303,26 @@ class SpotPerCellAnalyzer:
                  'std_dev_delaunay_vol': [],
                  'median_delaunay_vol': [],
                  'max_delaunay_vol': []}
+
         for label in range(1, self.maxLabel + 1):
-            tess = self.getDelaunay(label)
-            volumes = []
-            for a, b, c, d in tess.points[tess.simplices]:
-                volumes.append(self.tetravol(a, b, c, d))
-            volumes = np.array(volumes)
             table['label'].append(label)
-            table['min_delaunay_vol'].append(np.min(volumes))
-            table['mean_delaunay_vol'].append(np.mean(volumes))
-            table['std_dev_delaunay_vol'].append(np.std(volumes))
-            table['median_delaunay_vol'].append(np.median(volumes))
-            table['max_delaunay_vol'].append(np.max(volumes))
+            if len(self.pointsPerCell[label]) > 4:
+                tess = self.getDelaunay(label)
+                volumes = []
+                for a, b, c, d in tess.points[tess.simplices]:
+                    volumes.append(self.tetravol(a, b, c, d))
+                volumes = np.array(volumes)
+                table['min_delaunay_vol'].append(np.min(volumes))
+                table['mean_delaunay_vol'].append(np.mean(volumes))
+                table['std_dev_delaunay_vol'].append(np.std(volumes))
+                table['median_delaunay_vol'].append(np.median(volumes))
+                table['max_delaunay_vol'].append(np.max(volumes))
+            else:
+                table['min_delaunay_vol'].append(self.notApplicableValue)
+                table['mean_delaunay_vol'].append(self.notApplicableValue)
+                table['std_dev_delaunay_vol'].append(self.notApplicableValue)
+                table['median_delaunay_vol'].append(self.notApplicableValue)
+                table['max_delaunay_vol'].append(self.notApplicableValue)
         return table
 
 
@@ -337,7 +369,10 @@ class SpotPerCellAnalyzer:
         nnDistances = {}
         for label in range(1, self.maxLabel + 1):
             data = self.pointsPerCell[label]
-            nnDistances[label] = self.getNNDistancesFor(data)
+            if len(data) > 0:
+                nnDistances[label] = self.getNNDistancesFor(data)
+            else:
+                nnDistances[label] = ([],[])
         return nnDistances
 
 
