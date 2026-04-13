@@ -3,17 +3,24 @@ import random
 import numpy as np
 from scipy.signal import correlate
 from skimage.segmentation import clear_border
-from skimage.morphology import remove_small_objects
+from skimage.morphology import remove_small_objects, ball
 from skimage.segmentation import relabel_sequential
 from skimage.measure import regionprops_table
 from skimage.measure import regionprops
+from skimage.morphology import remove_small_holes
+from skimage.morphology import binary_dilation
+from skimage.morphology import binary_erosion
+from skimage.morphology import skeletonize
 from bigfish import detection
+import scipy
 from scipy.spatial import KDTree, Voronoi
 from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 from scipy.stats import ecdf
 from scipy.spatial.distance import cdist
 from sphot.measure import TableTool
+from sphot.arrayutils import NDArrayUtil
+
 
 
 class Segmentation:
@@ -154,6 +161,10 @@ class SpotPerCellAnalyzer:
         self.centroids = {}
         self.distancesFromCentroid = {}
         self.notApplicableValue = np.nan
+        self.radii = None
+        self.densityPerRadius = None
+        self.radiiAlongAxis = None
+        self.densitiesAlongAxis = None
 
 
     def getBaseMeasurements(self):
@@ -352,6 +363,101 @@ class SpotPerCellAnalyzer:
     def calculateDistancesFromCentroid(self):
         self._calculateSpotsPerCell()
         self.distancesFromCentroid = self.getDistancesFromCentroid()
+        return self.distancesFromCentroid
+
+
+    def calculateDensityPerRadiusFor(self, label):
+        self.calculateDistancesFromCentroid()
+        image = self.getCroppedLabelMask(label)
+        maxIndex = np.argmax(image.shape)
+        scale = self.scale[maxIndex]
+        maxRadius = (image.shape[maxIndex] * scale) / 2
+        self.radii = np.arange(0, maxRadius, scale)
+        self.densityPerRadius = np.zeros(self.radii.shape)
+        points = self.pointsPerCell[label]
+        centroid = self.centroids[label]
+        kdtree = KDTree(points)
+        mask = np.where(image > 0, 255, 0)
+        props = regionprops(mask)
+        for index, radius in enumerate(self.radii):
+            sphere = ball(radius / scale)
+            padded_sphere = NDArrayUtil.resizeTo(sphere, *mask.shape)
+            shifted_sphere = scipy.ndimage.shift(padded_sphere,
+                                                 props[0].centroid - padded_sphere.shape // np.array([2, 2, 2]))
+            intersectionMask = mask * shifted_sphere
+            result_props = regionprops(intersectionMask, spacing = self.scale)
+            volume = 0
+            if len(result_props) > 0:
+                volume = result_props[0].area
+            nrOfPoints = len(kdtree.query_ball_point(centroid, radius))
+            density = 0
+            if volume > 0:
+                density = nrOfPoints / volume
+            self.densityPerRadius[index] = density
+
+
+    def calculateDensityAlongAxisFor(self, axis, label):
+        scale = self.scale[axis]
+        image = self.getCroppedLabelMask(label)
+        points = np.array(self.getPointsForCroppedLabel(label))
+        image, points = self.alignImageAndPointsWithAxes(image, points)
+        coords = np.array([np.array([coord * scale]) for coord in points.T[axis]])
+        kdtree = KDTree(coords)
+        props = regionprops(image, spacing=self.scale)
+        centroid = props[0].centroid
+        maxRadius = (image.shape[axis] * scale) / 2
+        self.radiiAlongAxis = np.arange(0, maxRadius, scale)
+        self.densitiesAlongAxis = np.zeros_like(self.radiiAlongAxis)
+        for index, radius in enumerate(self.radiiAlongAxis):
+            mask = self.getMaskFor(int(radius // scale), image, axis, (centroid // self.scale).astype(np.uint8))
+            intersectionMask = mask * image
+            result_props = regionprops(intersectionMask, spacing=self.scale)
+            volume = 0
+            if len(result_props) > 0:
+                volume = result_props[0].area
+            nrOfPoints = len(kdtree.query_ball_point(centroid[axis], radius))
+            density = 0
+            if volume > 0:
+                density = nrOfPoints / volume
+            self.densitiesAlongAxis[index] = density
+
+
+    @classmethod
+    def getMaskFor(self, radius, image, axis, centroid):
+        """Create a mask of the given shape with values 1 in the area defined by radius around the center"""
+        mask = np.zeros_like(image)
+        if axis == 0:
+            mask[max(int(round(centroid[0]))-int(radius), 0):min(int(round(centroid[0]))+int(radius), mask.shape[0]-1),
+                :,
+                :] = 1
+        if axis == 1:
+            mask[:,
+                 max(int(round(centroid[1]))-int(radius), 0):min(int(round(centroid[1]))+int(radius), mask.shape[1]-1),
+                :] = 1
+        if axis == 2:
+            mask[
+              :,
+              :,
+              max(int(round(centroid[2]))-int(radius), 0):min(int(round(centroid[2]))+int(radius), mask.shape[2]-1)] = 1
+        return mask
+
+
+    def alignImageAndPointsWithAxes(self, image, points):
+        props = regionprops(image)
+        centroid = props[0].centroid
+        border = binary_dilation(image) * 255 - binary_erosion(image) * 255
+        skel = skeletonize(border)
+        coords = np.where(skel > 0)
+        coords = np.transpose(coords)
+        xc = coords - centroid
+        _, _, Vh = np.linalg.svd(xc, full_matrices=True)
+        # Apply
+        iCoords = np.transpose(np.where(image > 0)) - centroid
+        tCoords = iCoords @ Vh.T
+        tImage = self.getPointImageFor(tCoords)
+        points = points - centroid
+        tPoints = points @ Vh.T
+        return tImage, tPoints
 
 
     def _calculateSpotsPerCell(self):
@@ -387,10 +493,30 @@ class SpotPerCellAnalyzer:
         props = regionprops(self.labels, spacing=self.scale)
         for prop in props:
             label = prop.label
+            if label == 0:
+                continue
             self.centroids[label] = prop.centroid
             data = self.pointsPerCell[label]
             self.distancesFromCentroid[label] = self.getDistancesFromCentroidFor(data, self.centroids[label])
         return self.distancesFromCentroid
+
+
+    def getDistanceFromCentroidMeasurements(self):
+        self.calculateDistancesFromCentroid()
+        table = {'label': [],
+                 'min_centroid_dist': [],
+                 'mean_centroid_dist': [],
+                 'std_dev_centroid_dist': [],
+                 'median_centroid_dist': [],
+                 'max_centroid_dist': []}
+        for label in range(1, self.maxLabel + 1):
+            table['label'].append(label)
+            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
+            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
+            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
+            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
+            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+        return table
 
 
     def getEmptySpaceDistances(self):
@@ -558,17 +684,49 @@ class SpotPerCellAnalyzer:
     @classmethod
     def getPointImageFor(cls, points):
         pointsT = np.transpose(points)
-        minZ = np.min(pointsT[0])
-        maxZ = np.max(pointsT[0])
-        minY = np.min(pointsT[1])
-        maxY = np.max(pointsT[1])
-        minX = np.min(pointsT[2])
-        maxX = np.max(pointsT[2])
+        minZ = int(np.min(pointsT[0]))
+        maxZ = int(np.max(pointsT[0]))
+        minY = int(np.min(pointsT[1]))
+        maxY = int(np.max(pointsT[1]))
+        minX = int(np.min(pointsT[2]))
+        maxX = int(np.max(pointsT[2]))
         depth = (maxZ - minZ) + 1
         height = (maxY - minY) + 1
         width = (maxX - minX) + 1
-        image = np.zeros((depth, height, width), np.uint8)
-        shiftedPoints = [np.array([z-minZ, y-minY, x-minX]) for z, y, x in points]
+        image = np.zeros((int(depth), int(height), int(width)), dtype=np.uint8)
+        shiftedPoints = [np.array([int(z)-minZ, int(y)-minY, int(x)-minX]) for z, y, x in points]
+        for z, y, x in shiftedPoints:
+            image[z][y][x] = 255
+        image = remove_small_holes(image) * 255
+        return image
+
+
+    def getPointsForCroppedLabel(self, label):
+        self._calculateSpotsPerCell()
+        spots = self.pointsPerCell[label] / self.scale
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        minZ = bbox[0]
+        minY = bbox[1]
+        minX = bbox[2]
+        shiftedPoints = [np.array([int(z) - minZ, int(y) - minY, int(x) - minX]) for z, y, x in spots]
+        return shiftedPoints
+
+
+    def getPointImageForLabel(self, label):
+        self._calculateSpotsPerCell()
+        spots = self.pointsPerCell[label] / self.scale
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        depth = bbox[3] - bbox[0]
+        height = bbox[4] - bbox[1]
+        width = bbox[5] - bbox[2]
+        minZ = bbox[0]
+        minY = bbox[1]
+        minX = bbox[2]
+        shape = (depth, height, width)
+        image = np.zeros(shape, dtype=np.uint8)
+        shiftedPoints = [np.array([int(z) - minZ, int(y) - minY, int(x) - minX]) for z, y, x in spots]
         for z, y, x in shiftedPoints:
             image[z][y][x] = 255
         return image
@@ -586,6 +744,14 @@ class SpotPerCellAnalyzer:
         mask = (mask == label) * 1
         result = result * mask
         result = Background.removeMin(result)
+        return result
+
+
+    def getCroppedLabelMask(self, label):
+        props = regionprops(self.labels)
+        bbox = props[label - 1].bbox
+        result = self.labels[bbox[0]:bbox[3], bbox[1]:bbox[4], bbox[2]:bbox[5]]
+        result = (result == label) * 255
         return result
 
 
@@ -781,7 +947,11 @@ class SpatialStatFunction(object):
 
 
     def run(self):
-        self.subclassResponsability()
+        self.subclassResponsibility()
+
+
+    def subclassResponsibility(self):
+        raise Exception("An abstract method has been called! The subclass should have overriden it.")
 
 
 
@@ -839,8 +1009,11 @@ class TesselationTask(object):
 
 
     def run(self):
-        self.subclassResponsability()
+        self.subclassResponsibility()
 
+
+    def subclassResponsibility(self):
+        raise Exception("An abstract method has been called! The subclass should have overriden it.")
 
 
 class ConvexHullTask(TesselationTask):
@@ -925,3 +1098,62 @@ class CropLabelTask:
     def run(self):
         analyzer = SpotPerCellAnalyzer(None, self.labels, 1)
         self.result = analyzer.cropImageForLabel(self.image, self.label)
+
+
+
+class DistancesFromCentroidTask:
+
+
+    def __init__(self, labels, spots,  scale, units):
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.table = None
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        self.table = analyzer.calculateDistancesFromCentroid()
+
+
+
+class DensityByRadiusTask:
+
+
+    def __init__(self, label, labels, spots, scale, units):
+        self.label = label
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.radii = None
+        self.densities = None
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        analyzer.calculateDensityPerRadiusFor(self.label)
+        self.radii = analyzer.radii
+        self.densities = analyzer.densityPerRadius
+
+
+class DensityAlongAxisTask:
+
+
+    def __init__(self, label, labels, spots, scale, units):
+        self.label = label
+        self.labels = labels
+        self.spots = spots
+        self.scale = scale
+        self.units = units
+        self.radii = None
+        self.densities = None
+        self.axis = 0
+
+
+    def run(self):
+        analyzer = SpotPerCellAnalyzer(self.spots, self.labels, self.scale)
+        analyzer.calculateDensityAlongAxisFor(self.axis, self.label)
+        self.radii = analyzer.radiiAlongAxis
+        self.densities = analyzer.densitiesAlongAxis
