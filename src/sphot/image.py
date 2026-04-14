@@ -505,20 +505,25 @@ class SpotPerCellAnalyzer:
     def getEmptySpaceDistances(self):
         emptySpaceDistances = {}
         for label in range(1, self.maxLabel + 1):
-            data = self.pointsPerCell[label]
-            self.emptySpacePointsPerCell[label] = self.getNRandomPointsForLabel(label, self.nrOfEmptySpacePoints)
-            emptySpaceDistances[label] = self.getEmptySpaceDistancesFor(data, self.emptySpacePointsPerCell[label])
+            if len(self.pointsPerCell[label]) > 1:
+                data = self.pointsPerCell[label]
+                self.emptySpacePointsPerCell[label] = self.getNRandomPointsForLabel(label, self.nrOfEmptySpacePoints)
+                emptySpaceDistances[label] = self.getEmptySpaceDistancesFor(data, self.emptySpacePointsPerCell[label])
+            else:
+                emptySpaceDistances[label] = ([], [])
         return emptySpaceDistances
 
 
-    def getEmptySpaceDistancesFor(self, data, refPoints):
+    @classmethod
+    def getEmptySpaceDistancesFor(cls, data, refPoints):
         kdtree = KDTree(data)
         dist, points = kdtree.query(refPoints, 2)
         nnDistances = (dist[:, 1], points)
         return nnDistances
 
 
-    def getDistancesFromCentroidFor(self, data, centroid):
+    @classmethod
+    def getDistancesFromCentroidFor(cls, data, centroid):
         distances = []
         for point in data:
             distances.append(np.linalg.norm(np.array(point) - np.array(centroid)))
@@ -529,12 +534,16 @@ class SpotPerCellAnalyzer:
     def getAllDistances(self):
         allDistances = {}
         for label in range(1, self.maxLabel + 1):
-            data = self.pointsPerCell[label]
-            allDistances[label] = self.getAllDistancesFor(data)
+            if len(self.pointsPerCell[label]) > 1:
+                data = self.pointsPerCell[label]
+                allDistances[label] = self.getAllDistancesFor(data)
+            else:
+                allDistances[label] = ([], [])
         return allDistances
 
 
-    def getAllDistancesFor(self, data):
+    @classmethod
+    def getAllDistancesFor(cls, data):
         N = len(data)
         dist = cdist(data, data, 'euclidean')
         allDistances = (dist[np.triu_indices(N, 1)], data)
@@ -583,19 +592,25 @@ class SpotPerCellAnalyzer:
 
 
     def getEnvelopForNNDistances(self, label, nrOfSamples=100):
-        maxDist = np.max(self.nnDistances[label][0])
+        maxDist = 0
+        if len(self.pointsPerCell[label]) > 0:
+            maxDist = np.max(self.nnDistances[label][0])
         return self.getEnvelopForDistanceFunction(label, self.getNNDistancesFor, maxDist, nrOfSamples=nrOfSamples)
         # return self.getEnvelopFromECDFsOrdering(label, self.getNNDistancesFor, maxDist, nrOfSamples=nrOfSamples)
 
 
     def getEnvelopForAllDistances(self, label, nrOfSamples=100):
-        maxDist = np.max(self.allDistances[label][0])
+        maxDist = 0
+        if len(self.pointsPerCell[label]) > 0:
+            maxDist = np.max(self.allDistances[label][0])
         return self.getEnvelopForDistanceFunction(label, self.getAllDistancesFor, maxDist, nrOfSamples=nrOfSamples)
         # return self.getEnvelopFromECDFsOrdering(label, self.getAllDistancesFor, maxDist, nrOfSamples=nrOfSamples)
 
 
     def getEnvelopForEmptySpaceDistances(self, label, nrOfSamples=100):
-        maxDist = np.max(self.emptySpaceDistances[label][0])
+        maxDist = 0
+        if len(self.pointsPerCell[label]) > 0:
+            maxDist = np.max(self.emptySpaceDistances[label][0])
         lower95thIndex = (5 * nrOfSamples) // 100
         upper95thIndex = (95 * nrOfSamples) // 100
         xValues = np.array(list(np.arange(0, math.floor(maxDist + 1), self.scale[1])))
