@@ -160,11 +160,11 @@ class SpotPerCellAnalyzer:
         self.emptySpaceDistances = {}
         self.centroids = {}
         self.distancesFromCentroid = {}
-        self.notApplicableValue = np.nan
         self.radii = None
         self.densityPerRadius = None
         self.radiiAlongAxis = None
         self.densitiesAlongAxis = None
+        self.notApplicableValue = np.nan
 
 
     def getBaseMeasurements(self):
@@ -204,31 +204,6 @@ class SpotPerCellAnalyzer:
                 table['std_dev_nn_dist'].append(self.notApplicableValue)
                 table['median_nn_dist'].append(self.notApplicableValue)
                 table['max_nn_dist'].append(self.notApplicableValue)
-        return table
-
-
-    def getDistanceFromCentroidMeasurements(self):
-        self.calculateDistancesFromCentroid()
-        table = {'label': [],
-                 'min_centroid_dist': [],
-                 'mean_centroid_dist': [],
-                 'std_dev_centroid_dist': [],
-                 'median_centroid_dist': [],
-                 'max_centroid_dist': []}
-        for label in range(1, self.maxLabel + 1):
-            table['label'].append(label)
-            if  len(self.pointsPerCell[label]) > 0:
-                table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
-                table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
-                table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
-                table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
-                table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
-            else:
-                table['min_centroid_dist'].append(self.notApplicableValue)
-                table['mean_centroid_dist'].append(self.notApplicableValue)
-                table['std_dev_centroid_dist'].append(self.notApplicableValue)
-                table['median_centroid_dist'].append(self.notApplicableValue)
-                table['max_centroid_dist'].append(self.notApplicableValue)
         return table
 
 
@@ -478,11 +453,12 @@ class SpotPerCellAnalyzer:
             if len(data) > 0:
                 nnDistances[label] = self.getNNDistancesFor(data)
             else:
-                nnDistances[label] = ([],[])
+                nnDistances[label] = ([], [])
         return nnDistances
 
 
-    def getNNDistancesFor(self, data):
+    @classmethod
+    def getNNDistancesFor(cls, data):
         kdtree = KDTree(data)
         dist, points = kdtree.query(data, 2)
         nnDistances = (dist[:,1], points)
@@ -511,11 +487,18 @@ class SpotPerCellAnalyzer:
                  'max_centroid_dist': []}
         for label in range(1, self.maxLabel + 1):
             table['label'].append(label)
-            table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
-            table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
-            table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
-            table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
-            table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+            if len(self.pointsPerCell[label]) > 0:
+                table['min_centroid_dist'].append(np.min(self.distancesFromCentroid[label]))
+                table['mean_centroid_dist'].append(np.mean(self.distancesFromCentroid[label]))
+                table['std_dev_centroid_dist'].append(np.std(self.distancesFromCentroid[label]))
+                table['median_centroid_dist'].append(np.median(self.distancesFromCentroid[label]))
+                table['max_centroid_dist'].append(np.max(self.distancesFromCentroid[label]))
+            else:
+                table['min_centroid_dist'].append(self.notApplicableValue)
+                table['mean_centroid_dist'].append(self.notApplicableValue)
+                table['std_dev_centroid_dist'].append(self.notApplicableValue)
+                table['median_centroid_dist'].append(self.notApplicableValue)
+                table['max_centroid_dist'].append(self.notApplicableValue)
         return table
 
 
@@ -1157,3 +1140,4 @@ class DensityAlongAxisTask:
         analyzer.calculateDensityAlongAxisFor(self.axis, self.label)
         self.radii = analyzer.radiiAlongAxis
         self.densities = analyzer.densitiesAlongAxis
+
