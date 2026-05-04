@@ -323,16 +323,34 @@ class SpotPerCellAnalyzer:
         self.calculateNNECDFs()
 
 
+    def calculateGFunctionFor(self, label):
+        self._calculateSpotsPerCell()
+        self.nnDistances = self.getNNDistancesForLabel(label)
+        self.calculateNNECDFFor(label)
+
+
     def calculateHFunction(self):
         self._calculateSpotsPerCell()
         self.allDistances = self.getAllDistances()
         self.calculateAllECDFs()
 
 
+    def calculateHFunctionFor(self, label):
+        self._calculateSpotsPerCell()
+        self.allDistances = self.getAllDistancesForLabel(label)
+        self.calculateAllECDFFor(label)
+
+
     def calculateFFunction(self):
         self._calculateSpotsPerCell()
         self.emptySpaceDistances = self.getEmptySpaceDistances()
         self.calculateEmptySpaceECDFs()
+
+
+    def calculateFFunctionFor(self, label):
+        self._calculateSpotsPerCell()
+        self.emptySpaceDistances = self.getEmptySpaceDistancesForLabel(label)
+        self.calculateEmptySpaceECDFFor(label)
 
 
     def calculateDistancesFromCentroid(self):
@@ -457,6 +475,16 @@ class SpotPerCellAnalyzer:
         return nnDistances
 
 
+    def getNNDistancesForLabel(self, label):
+        nnDistances = {}
+        data = self.pointsPerCell[label]
+        if len(data) > 0:
+            nnDistances[label] = self.getNNDistancesFor(data)
+        else:
+            nnDistances[label] = ([], [])
+        return nnDistances
+
+
     @classmethod
     def getNNDistancesFor(cls, data):
         kdtree = KDTree(data)
@@ -514,6 +542,17 @@ class SpotPerCellAnalyzer:
         return emptySpaceDistances
 
 
+    def getEmptySpaceDistancesForLabel(self, label):
+        emptySpaceDistances = {}
+        if len(self.pointsPerCell[label]) > 1:
+            data = self.pointsPerCell[label]
+            self.emptySpacePointsPerCell[label] = self.getNRandomPointsForLabel(label, self.nrOfEmptySpacePoints)
+            emptySpaceDistances[label] = self.getEmptySpaceDistancesFor(data, self.emptySpacePointsPerCell[label])
+        else:
+            emptySpaceDistances[label] = ([], [])
+        return emptySpaceDistances
+
+
     @classmethod
     def getEmptySpaceDistancesFor(cls, data, refPoints):
         kdtree = KDTree(data)
@@ -542,6 +581,16 @@ class SpotPerCellAnalyzer:
         return allDistances
 
 
+    def getAllDistancesForLabel(self, label):
+        allDistances = {}
+        if len(self.pointsPerCell[label]) > 1:
+            data = self.pointsPerCell[label]
+            allDistances[label] = self.getAllDistancesFor(data)
+        else:
+            allDistances[label] = ([], [])
+        return allDistances
+
+
     @classmethod
     def getAllDistancesFor(cls, data):
         N = len(data)
@@ -553,13 +602,32 @@ class SpotPerCellAnalyzer:
     def calculateNNECDFs(self):
         self.nnEcdfs = {}
         for label in range(1, self.maxLabel + 1):
+            if len(self.nnDistances[label][0])<2:
+                continue
             self.nnEcdfs[label] = self.getECDF(self.nnDistances[label][0])
+
+
+    def calculateNNECDFFor(self, label):
+        self.nnEcdfFor = {}
+        if len(self.nnDistances[label][0]) < 2:
+            return
+        self.nnEcdfs[label] = self.getECDF(self.nnDistances[label][0])
 
 
     def calculateAllECDFs(self):
         self.adEcdfs = {}
         for label in range(1, self.maxLabel + 1):
             self.adEcdfs[label] = self.getECDF(self.allDistances[label][0])
+
+
+    def calculateAllECDFFor(self, label):
+        self.adEcdfs = {}
+        self.adEcdfs[label] = self.getECDF(self.allDistances[label][0])
+
+
+    def calculateEmptySpaceECDFFor(self, label):
+        self.esEcdfs = {}
+        self.esEcdfs[label] = self.getECDF(self.emptySpaceDistances[label][0])
 
 
     def calculateEmptySpaceECDFs(self):
@@ -961,7 +1029,7 @@ class FFunctionTask(SpatialStatFunction):
 
 
     def run(self):
-        self.analyzer.calculateFFunction()
+        self.analyzer.calculateFFunctionFor(self.label)
         self.envelop = self.analyzer.getEnvelopForEmptySpaceDistances(self.label, nrOfSamples=self.nrOfSamples)
 
 
@@ -974,7 +1042,7 @@ class GFunctionTask(SpatialStatFunction):
 
 
     def run(self):
-        self.analyzer.calculateGFunction()
+        self.analyzer.calculateGFunctionFor(self.label)
         self.envelop = self.analyzer.getEnvelopForNNDistances(self.label, nrOfSamples=self.nrOfSamples)
 
 
@@ -987,7 +1055,7 @@ class HFunctionTask(SpatialStatFunction):
 
 
     def run(self):
-        self.analyzer.calculateHFunction()
+        self.analyzer.calculateHFunctionFor(self.label)
         self.envelop = self.analyzer.getEnvelopForAllDistances(self.label, nrOfSamples=self.nrOfSamples)
 
 
